@@ -9,10 +9,10 @@ def f(df: pd.DataFrame,
 
 def test_f():
 
-    test_matrix = np.array([[1200, 7000],
-                           [200, 8200],
-                           [300, 7200],
-                           [450, 7800]])
+    DT          = np.linspace(0, 1400, 1000)
+    S2e         = 8200 * np.exp(-DT/30000)
+
+    test_matrix = np.column_stack((DT, S2e))
 
     df          = pd.DataFrame(test_matrix, columns = ['DT', 'S2e'])
 
