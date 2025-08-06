@@ -76,6 +76,17 @@ def test_maria_diffusion3():
     df_test = pd.Dataframe(data=d)
     fun_test = f_diffusion_band(df_test, 10, 100)
 
+    if df_test is empty:
+        raise ValueError ('Empty Dataframe')
+
+    try:
+        fun_test
+
+    except Exception as e:
+
+        print(f"Test diffusion3 failed, unexpected exception ocurred: {e}")
+        raise
+
 
 def test_f_diffusion_band():
 
