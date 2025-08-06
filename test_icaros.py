@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 from scipy.stats import binned_statistic
+from invisible_cities.core.fit_functions import fit, polynom, gauss
+from scipy.stats import binned_statistic
 from typing import Callable
 
 def diffusion_band(kdst         :   pd.DataFrame,
@@ -13,6 +15,62 @@ def diffusion_band(kdst         :   pd.DataFrame,
     kdst_inband = kdst[mask]
 
     return kdst_inband
+
+
+
+def diffusion_band2(kdst    : pd.DataFrame,
+                     bins   : np.ndarray,
+                     sigmas : float) -> pd.DataFrame:
+
+    means , bin_edges, _ = binned_statistic(kdst.DT, kdst.Zrms**2, bins = bins, statistic = 'mean')
+    std   , _        , _ = binned_statistic(kdst.DT, kdst.Zrms**2, bins = bins, statistic = 'std')
+
+    top    = means + sigmas * std
+    bottom = means - sigmas * std
+
+    bin_centers = (bin_edges[:-1] + bin_edges[1:])/2
+
+    top_line  = fit(polynom, bin_centers, top    , seed = (0, 1))
+    bot_line  = fit(polynom, bin_centers, bottom , seed = (0, 1))
+
+
+    mask = (top_line.fn(kdst.DT) > kdst.Zrms**2) & (bot_line.fn(kdst.DT) < kdst.Zrms**2)
+
+    return kdst[mask]
+
+
+def dif_band(kdst   : pd.DataFrame,
+             method : str = 'functions',
+             **kwargs) -> pd.DataFrame:
+
+    if method == 'statistical':
+        kdst = diffusion_band (kdst, **kwargs)
+
+    else:
+        kdst = diffusion_band2(kdst, **kwargs)
+
+    return kdst
+
+
+def test_dif_band():
+
+    Zrms    = np.arange(0, 100,  0.01)**0.5
+    DT      = np.arange(0, 2000, 0.2)
+
+    d        = {'Zrms': Zrms, 'DT': DT}
+    df_test  = pd.DataFrame(data = d)
+
+    kwargs_f = {'lower_limit': lambda x: 0.05*x - 3,
+                'upper_limit': lambda x: 0.05*x + 3}
+
+    kwargs_s = {'bins': 50, 'sigmas': 3}
+
+    methods = ('functions', 'statistical')
+    kwarg  = (kwargs_f, kwargs_s)
+
+    for method, args in zip(methods, kwarg):
+        assert not dif_band(df_test, method, **args).empty
+
 
 
 
@@ -30,9 +88,7 @@ def test_diffusion_band():
     assert np.all(fun_test.values == df_test.values)
 
 
-
-
-test_diffusion_band()
+# test_diffusion_band()
 
 def unique_S1_S2(kdst   : pd.DataFrame) -> pd.DataFrame:
 
@@ -66,5 +122,5 @@ def test_unique_S1_S2_2():
         raise
 
 
-test_unique_S1_S2()
-test_unique_S1_S2_2()
+# test_unique_S1_S2()
+# test_unique_S1_S2_2()
