@@ -122,5 +122,86 @@ def test_unique_S1_S2_2():
         raise
 
 
-# test_unique_S1_S2()
-# test_unique_S1_S2_2()
+ test_unique_S1_S2()
+ test_unique_S1_S2_2()
+
+ def lifetime_fit(kdst: pd.DataFrame) -> pd.DataFrame:
+
+    def exponential(time: np.array, e0: float, lifetime: float) -> np.array:
+        return e0 * np.exp(-time / lifetime)
+
+    try:
+        popt, pcov = curve_fit(exponential, kdst.DT, kdst.S2e, p0=[8200, 30000])
+        E0, lifetime, uE0, ulifetime = (*popt, *np.sqrt(np.diag(pcov)))
+
+    except Exception as e:
+        print(f"Error fitting data: {e}")
+        E0, lifetime, uE0, ulifetime = np.nan, np.nan, np.nan, np.nan
+
+    columns = ['E0', 'lifetime', 'uE0', 'ulifetime']
+    return pd.DataFrame([E0, lifetime, uE0, ulifetime], index=columns).T
+
+
+def create_maps(kdst                : pd.DataFrame
+                ) -> pd.DataFrame:
+
+    x_bins = np.linspace(-500, 500, 101)
+    y_bins = np.linspace(-500, 500, 101)
+
+    kdst['X_bin'] = np.digitize(kdst['X'], x_bins)
+    kdst['Y_bin'] = np.digitize(kdst['Y'], y_bins)
+
+
+    grouped = kdst.groupby(['X_bin', 'Y_bin']).apply(lifetime_fit).reset_index(level=2, drop=True)
+    # grouped = grouped[(grouped['E0'] > 7500) & (grouped['lifetime'] < 50000)]
+
+    return grouped
+
+def apply_corrections(kdst                     : pd.DataFrame,
+                      map                      : pd.DataFrame,
+                      NormStrategy             : str  = None,
+                      lifetime_correction      : bool = True) -> pd.DataFrame:
+
+    x_bins = np.linspace(-500, 500, 101)
+    y_bins = np.linspace(-500, 500, 101)
+
+    if NormStrategy is not None:
+
+        kdst_group_center = map.reset_index()
+
+        x_centers = (x_bins[:-1] + x_bins[1:]) / 2
+        y_centers = (y_bins[:-1] + y_bins[1:]) / 2
+        kdst_group_center['X_mm'] = kdst_group_center['X_bin'].astype(int).apply(lambda i: x_centers[i - 1])
+        #kdst_group_center['X_mm'] = x_centers[kdst_group_center['X_bin'].astype(int) - 1]
+        kdst_group_center['Y_mm'] = kdst_group_center['Y_bin'].astype(int).apply(lambda i: y_centers[i - 1])
+
+        kdst_group_center = kdst_group_center[kdst_group_center.X_mm**2 + kdst_group_center.Y_mm**2 < 300**2]
+
+
+        if NormStrategy == 'Mean':
+            norm = kdst_group_center['E0'].mean()
+
+        elif NormStrategy == 'Maximum':
+            norm = kdst_group_center['E0'].max()
+
+        else:
+            raise ValueError("NormStrategy must be 'Mean' or 'Maximum'")
+
+        map = map.reset_index()
+
+        kdst = kdst.merge(map[['X_bin', 'Y_bin', 'E0', 'lifetime']], on=['X_bin', 'Y_bin'], how='left')
+
+        kdst['corr_geom'] = norm / kdst['E0']
+
+        if lifetime_correction == False:
+
+            return kdst
+
+        else:
+
+            kdst['corr_lifetime'] = np.exp(kdst['DT'] / kdst['lifetime'])
+            kdst['correction_total'] = kdst['corr_geom'] * kdst['corr_lifetime']
+
+            kdst['S2e_corr'] = kdst['S2e'] * kdst['correction_total']
+
+    return kdst.drop(columns=['X_bin', 'Y_bin'])
